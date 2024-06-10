@@ -3,6 +3,8 @@
 import click
 import _gomoku
 import _gomoku.env
+import rich.traceback
+rich.traceback.install()
 
 
 @click.group(help='五子棋命令行')
@@ -64,11 +66,10 @@ def play_with_human():
             for event in pygame.event.get():  # 从Pygame的事件队列中取出事件，并从队列中删除该事件
                 match event.type:
                     case pygame.MOUSEBUTTONDOWN:
-                        # TODO 使用 env.step 更新，而不是直接动内部矩阵
-                        if env.chessboard[i, j] != 0:
+                        done = env.step(_gomoku.env.Action(i, j, player), False)
+                        if not done:
                             continue  # 不能覆盖已有的棋子
-                        env.chessboard[i, j] = player
-                        env.last_point = np.array((i, j))
+
                         player_idx += 1
                         player_idx %= len(players)
                         player = players[player_idx]
