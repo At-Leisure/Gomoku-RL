@@ -7,6 +7,7 @@ from operator import itemgetter
 from collections import defaultdict, deque
 from typing import Literal, Any, overload
 from dataclasses import dataclass
+import colorsys
 
 import pygame.freetype
 from typing_extensions import Self
@@ -40,8 +41,8 @@ LX = LY = UINT*3//2  # 边界距离
 PR = UINT//2  # 棋子半径
 FS = UINT//3  # 文字大小
 FK = UINT*3//4  # 文字距离棋盘
-LW = 2 # 线宽
-BW = 5 # 边框宽度
+LW = 2  # 线宽
+BW = 5  # 边框宽度
 
 
 COLORS = {
@@ -97,6 +98,7 @@ class GomokuEnv(gym.Env):
         import pygame
         if pygame.get_init() == False:
             pygame.init()
+        if self.render_mode in ["human", "rgb_array"]:
             self.window_font = pygame.font.SysFont(['Consolas'], FS)
             if self.render_mode == "human":
                 pygame.display.init()
@@ -106,7 +108,7 @@ class GomokuEnv(gym.Env):
                 self.window_surface = pygame.Surface(self.window_size)
 
     @property
-    def _last_action(self):
+    def last_action(self):
         """ 从队列中获取最后一个加入的元素 """
         return self.actions[-1]
 
@@ -129,6 +131,9 @@ class GomokuEnv(gym.Env):
         """
 
         if isinstance(forcely, bool):
+            if action.faction == self.CHESS_NULL:
+                return False
+
             if self.chessboard[action.x, action.y] != self.CHESS_NULL:
                 if not forcely:
                     return False
@@ -170,7 +175,7 @@ class GomokuEnv(gym.Env):
         positions = self.chessboard == 2
         ret[1, positions] = 1.0
         # 历史
-        la = self._last_action
+        la = self.last_action
         ret[2, la.x, la.y] = 1.0
         # 对应阵营
         if la.faction == 2:
@@ -186,7 +191,7 @@ class GomokuEnv(gym.Env):
             )
         if self.render_mode in ['human', 'rgb_array']:
             self._render_gui(self.render_mode)
-            return self._render_result(self.render_mode)
+            return self.rendered_result(self.render_mode)
         else:
             raise NotImplementedError()
 
@@ -229,7 +234,7 @@ class GomokuEnv(gym.Env):
                              [LX+(self.board_wid-1)*UINT, LY+i*UINT],
                              LW)
             # 0-9
-            text = str(i)
+            text = str(i+1)
             # max_len = len(str(self.board_hei))
             t = self.window_font.render(text, True, (0, 0, 0))
             self.window_surface.blit(t, [LX-FK-len(text)/2*FS, LY+i*UINT-FS/2])
@@ -257,7 +262,26 @@ class GomokuEnv(gym.Env):
                                [LX+i*UINT, LY+j*UINT],
                                PR)
 
-    def _render_result(self, mode: RenderModesList) -> np.ndarray:
+    def render_prob(self, probability_matrix: np.ndarray[np.float_],
+                    color: tuple[int, int, int] | np.ndarray = None):
+        """ 特殊形况，仅使用与绘制输出样式（渐变色）
+        此时的 chessboard 的类型必须是 float，并且范围是 [0.0, 1.0]，灰色的深度代表了概率"""
+        assert self.chessboard.shape == probability_matrix.shape, '内置棋盘和最为参数的概率棋盘的尺寸必须相等'
+        w, h = probability_matrix.shape
+        # 渐变色，线性插值
+        aim_arr = np.array([255, 0, 0]) if color is None else np.array(color)
+        base_arr = np.array(COLORS['bg'])
+        gradient_color = base_arr + (aim_arr-base_arr) * probability_matrix.reshape([w, h, 1])
+        gradient_color = gradient_color.astype(np.uint8)
+        for i in range(self.board_wid):
+            for j in range(self.board_hei):
+                c = np.array([255, 0, 0])
+                pygame.draw.circle(self.window_surface,
+                                   gradient_color[i, j],
+                                   [LX+i*UINT, LY+j*UINT],
+                                   PR, 0)
+
+    def rendered_result(self, mode: RenderModesList) -> np.ndarray:
         """ 返回GUI的渲染结果 """
         import pygame
         if mode == "human":
@@ -302,7 +326,7 @@ class GomokuEnv(gym.Env):
         hyper_board = np.zeros([8+self.board_wid, 8+self.board_hei], dtype=self.chessboard.dtype)
         hyper_board[4:4+self.board_wid, 4:4+self.board_hei] = self.chessboard
 
-        x, y, _ = self._last_action.package
+        x, y, _ = self.last_action.package
         assert 0 <= x <= self.board_wid-1 and 0 <= y <= self.board_hei-1
         arr = self._getPointAround(x, y, hyper_board)
 
