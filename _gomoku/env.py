@@ -8,6 +8,7 @@ from collections import defaultdict, deque
 from typing import Literal, Any, overload
 from dataclasses import dataclass
 
+import pygame.freetype
 from typing_extensions import Self
 
 import gym.error
@@ -34,14 +35,19 @@ __all__ = ['GomokuEnv']
 RenderModesList = Literal['human', 'rgb_array', 'ansi']
 
 
-UINT = 30  # 距离单元
-LX = LY = UINT//2  # 边界距离
-PR = 10  # 棋子半径
+UINT = 100  # 距离单元
+LX = LY = UINT*3//2  # 边界距离
+PR = UINT//2  # 棋子半径
+FS = UINT//3  # 文字大小
+FK = UINT*3//4  # 文字距离棋盘
+LW = 2 # 线宽
+BW = 5 # 边框宽度
 
 
 COLORS = {
-    'bg': (228, 206, 161),
-    'line': (0, 0, 0),
+    'bg': (223, 191, 120),
+    'chess': (217, 169, 93),
+    'line': (75, 75, 75),
     'agent': {
         1: (0, 0, 0),
         2: (255, 255, 255)
@@ -81,16 +87,17 @@ class GomokuEnv(gym.Env):
         # 检测可视环境下pygame的安装
         if self.render_mode in ['human', 'rgb_array']:
             try:
-                import pygame as pg
+                import pygame
             except ImportError:
                 raise gym.error.DependencyNotInstalled(
                     "pygame is not installed, run `pip install pygame`")
         self.window_surface = None
-        self.window_size = self.board_size*UINT
+        self.window_size = (self.board_size-1)*UINT + 2*np.array([LX, LY])
 
         import pygame
         if pygame.get_init() == False:
             pygame.init()
+            self.window_font = pygame.font.SysFont(['Consolas'], FS)
             if self.render_mode == "human":
                 pygame.display.init()
                 pygame.display.set_caption("None")
@@ -111,7 +118,7 @@ class GomokuEnv(gym.Env):
     @overload
     def step(self, action: Action, forcely: bool) -> bool: pass
     @overload
-    def step(self, action: Action) -> tuple[np.ndarray, int, bool, str]: pass
+    def step(self, action: Action) -> tuple[np.ndarray, int, bool]: pass
 
     def step(self, action: Action, forcely=None):
         """ 更新环境
@@ -131,27 +138,44 @@ class GomokuEnv(gym.Env):
             return True
 
         else:
-            ...
+            self.chessboard[action.x, action.y] = action.faction
+            self.actions.put_smartly(action)  # 使用Queue.put的话，在已满状态继续put就会卡住
 
-        # self.states[action] = self.current_player
-        # if action in self.availables:
-        #     self.availables.remove(action)
+            terminated, winner = self.is_end()
+            if terminated:
+                if winner == action.faction:  # 获胜
+                    reward = 100
+                elif winner != action.faction:  # 失败
+                    reward = -100
+                elif winner == None:  # 持平
+                    reward = 10
+            else:
+                reward = -1
 
-        # self.last_move = action
+            return self.observation_4D, reward, terminated
 
-        # done, winner = self.game_end()
-        # reward = 0
-        # if done:
-        #     if winner == self.current_player:
-        #         reward = 1
-        #     else:
-        #         reward = -1
+    @property
+    def observation_4D(self):
+        """ 状态的可观察量，一个四维矩阵。符合pytorch的张量，即[c,w,h]
 
-        # # update state
-        # obs = self.current_state()
-
-        # return obs, reward, done, self.info
-        # return observation, reward, terminated, info
+        - 纬度1：派系1的棋子
+        - 纬度2：派系2的棋子
+        - 纬度3：历史落棋点
+        - 纬度4：上个落棋的阵营"""
+        ret = np.zeros((4, self.board_wid, self.board_hei))
+        # 阵营1
+        positions = self.chessboard == 1
+        ret[0, positions] = 1.0
+        # 阵营2
+        positions = self.chessboard == 2
+        ret[1, positions] = 1.0
+        # 历史
+        la = self._last_action
+        ret[2, la.x, la.y] = 1.0
+        # 对应阵营
+        if la.faction == 2:
+            ret[3, :, :] = 1.0
+        return ret
 
     def render(self):
         if self.render_mode is None:
@@ -177,18 +201,43 @@ class GomokuEnv(gym.Env):
 
         # init background
         self.window_surface.fill(COLORS['bg'])
-        # self.game_surface.fill(colors['bg'])
+
+        # chess
+        for i in range(self.board_wid):
+            for j in range(self.board_hei):
+                pygame.draw.circle(self.window_surface,
+                                   COLORS['chess'],
+                                   [LX+i*UINT, LY+j*UINT],
+                                   PR, 0)
 
         for i in range(0, self.board_wid):
             pygame.draw.line(self.window_surface,
                              COLORS['line'],
                              [LX+i*UINT, LY+0*UINT],
-                             [LX+i*UINT, LY+(self.board_hei-1)*UINT])
+                             [LX+i*UINT, LY+(self.board_hei-1)*UINT],
+                             LW)
+            # A-Z
+            text = chr(i+65)
+            # max_len = len(str(self.board_wid))
+            t = self.window_font.render(text, True, (0, 0, 0))
+            self.window_surface.blit(t, [LX+i*UINT-len(text)/4*FS, LY-FK-FS])
+            self.window_surface.blit(t, [LX+i*UINT-len(text)/4*FS, LY+(self.board_hei-1)*UINT+FK])
         for i in range(0, self.board_hei):
             pygame.draw.line(self.window_surface,
                              COLORS['line'],
                              [LX+0*UINT, LY+i*UINT],
-                             [LX+(self.board_wid-1)*UINT, LY+i*UINT])
+                             [LX+(self.board_wid-1)*UINT, LY+i*UINT],
+                             LW)
+            # 0-9
+            text = str(i)
+            # max_len = len(str(self.board_hei))
+            t = self.window_font.render(text, True, (0, 0, 0))
+            self.window_surface.blit(t, [LX-FK-len(text)/2*FS, LY+i*UINT-FS/2])
+            self.window_surface.blit(t, [LX+(self.board_wid-1)*UINT+FK, LY+i*UINT-FS/2])
+
+        # bold boundage
+        pygame.draw.rect(self.window_surface, COLORS['line'],
+                         ((LX, LY), ((self.board_wid-1)*UINT, (self.board_hei-1)*UINT)), BW)
 
         # random circle
         # for i in range(self.board_wid):
@@ -197,7 +246,7 @@ class GomokuEnv(gym.Env):
         #         pygame.draw.circle(self.window_surface,
         #                            np.array((255, 255, 255))*c,
         #                            [LX+i*UINT, LY+j*UINT],
-        #                            5, 0)
+        #                            PR, 0)
         # self.chessboard[2,2]=1
         # self.chessboard[3,3]=2
         px, py = np.where(self.chessboard != 0)
@@ -208,7 +257,7 @@ class GomokuEnv(gym.Env):
                                [LX+i*UINT, LY+j*UINT],
                                PR)
 
-    def _render_result(self, mode: RenderModesList):
+    def _render_result(self, mode: RenderModesList) -> np.ndarray:
         """ 返回GUI的渲染结果 """
         import pygame
         if mode == "human":

@@ -1,10 +1,13 @@
 """ 多任务命令集 """
-
+import typing
+import collections
+import inspect
 import click
 import _gomoku
 import _gomoku.env
-import rich.traceback
-rich.traceback.install()
+import _gomoku.utils
+# import rich.traceback
+# rich.traceback.install()
 
 
 @click.group(help='五子棋命令行')
@@ -37,14 +40,18 @@ def play_with_agent():
 
 
 @main.command(help='与人博弈')
-def play_with_human():
+@click.option('-s', '--chess-size', default='[6, 6]', type=tuple, help="棋盘尺寸，默认是：'[6, 6]'")
+def play_with_human(chess_size: str):
     import pygame
     import numpy as np
-    print('开始游戏')
+    chess_size = ''.join(iter(chess_size))
+    print(f'开始游戏：{chess_size=}')
+    chess_size = eval(chess_size)
     players = (1, 2)
     player_idx = 0
     player = players[player_idx]
-    with _gomoku.GomokuEnv((6, 6), 'human') as env:
+    winner = None
+    with _gomoku.GomokuEnv(chess_size, 'human') as env:
         runGame = True
         while True:
             env._render_gui('human')
@@ -59,7 +66,7 @@ def play_with_human():
             i = max(0, min(i, 5))
             j = max(0, min(j, 5))
             pygame.draw.circle(env.window_surface,
-                               (128, 128, 128),
+                               (128, 0, 0),
                                (_gomoku.env.LX+i*_gomoku.env.UINT, _gomoku.env.LY+j*_gomoku.env.UINT),
                                5)
 
@@ -76,10 +83,10 @@ def play_with_human():
 
                         # 检查游戏是否结束
                         is_end, winner = env.is_end()
-                        if is_end and winner is not None:
-                            print(f'玩家{winner}获胜')
-                        elif is_end and winner is None:
-                            print(f'平局')
+                        # if is_end and winner is not None:
+                        #     print(f'玩家{winner}获胜')
+                        # elif is_end and winner is None:
+                        #     print(f'平局')
 
                         if is_end:
                             runGame = False
@@ -95,27 +102,44 @@ def play_with_human():
                 pygame.display.flip()
                 pygame.display.update()
 
-    print('结束游戏')
-
-    # while True:
-    #     is_end, winner = env.is_end()
-    #     if is_end:
-    #         break
-    #     else:
-    #         player_idx += 1
-    #         player_idx %= len(players)
-    #         player = players[player_idx]
-    #         print(player)
+    print(f'游戏结束：{f"玩家{winner}号获胜" if winner else "平局"}')
 
 
-@main.command()
-def test_render():
+@main.command(help='测试GUI的渲染效果')
+@click.option('-c', '--coverage', default='75%', type=str, help='棋盘覆盖率，默认是：75%')
+@click.option('-p', '--save-path', default=None,help='图片存放到`path`而不直接展示，若为None则只展示而不储存')
+def test_render(coverage: str, save_path: str):
+    import random
+    from pathlib import Path
+    from PIL import Image
     import matplotlib.pyplot as plt
-    with _gomoku.GomokuEnv(render_mode='rgb_array') as env:
-        env.render()
-        a = env.render()
-        plt.imshow(a)
-        plt.show()
+    size = (19, 19)
+
+    coverage = float(coverage[:-1])/100
+    coverage /= 2  # 防止 1.0 取小数获得的百分比是 0.0
+    coverage -= int(coverage)  # 只保留小数部分
+
+    def cpm(r: float):
+        if 0 < r < coverage:
+            return 1
+        elif coverage < r < coverage*2:
+            return 2
+        else:
+            return 0
+
+    with _gomoku.GomokuEnv(size, render_mode='rgb_array') as env:
+        for i in range(size[0]):
+            for j in range(size[1]):
+                r = random.random()
+                env.step(_gomoku.utils.Action(i, j, cpm(r)))
+        arr = env.render()
+        img = Image.fromarray(arr)
+
+    if save_path is None:
+        img.show()
+    else:
+        img.save(save_path)
+        print(f'Image rendered has been saved in {Path(save_path).absolute()}')
 
 
 if __name__ == '__main__':
