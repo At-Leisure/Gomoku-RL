@@ -26,8 +26,8 @@ import gym.error
 from gym import logger, spaces
 from gym.utils import seeding
 
-from . import utils as _utils
-from .utils import Action
+from .. import utils as _utils
+from ..utils import Action
 
 
 __all__ = ['GomokuEnv']
@@ -347,3 +347,27 @@ class GomokuEnv(gym.Env):
             return True, None
         else:  # 未结束
             return False, None
+
+    def start_self_play(self, player: _utils.PlayerABC):
+        """ 使用MCTS播放器启动自玩游戏，重复使用搜索树，并存储self-play数据:(state, McTs_probs, z)用于训练
+        """
+        self.reset()
+        states, mcts_probs, current_players = [], [], []
+        while True:
+            move, move_probs = player.get_action(self, return_prob=1)
+            # store the data
+            states.append(self.current_state())
+            mcts_probs.append(move_probs)
+            current_players.append(self.current_player)
+            # perform a move
+            self.step(move)
+            end, winner = self.game_end()
+            if end:
+                # winner from the perspective of the current player of each state
+                winners_z = np.zeros(len(current_players))
+                if winner != -1:
+                    winners_z[np.array(current_players) == winner] = 1.0
+                    winners_z[np.array(current_players) != winner] = -1.0
+                # reset MCTS root node
+                player.reset_player()
+                return winner, zip(states, mcts_probs, winners_z)

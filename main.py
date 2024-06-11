@@ -10,9 +10,9 @@ from PIL import Image
 import matplotlib.pyplot as plt
 import numpy as np
 
-import _gomoku
-import _gomoku.env
-import _gomoku.utils
+import _internal
+import _internal.env.gomoku
+import _internal.utils
 # import rich.traceback
 # rich.traceback.install()
 
@@ -58,14 +58,14 @@ def play_with_human(chess_size: str):
     player_idx = 0
     player = players[player_idx]
     winner = None
-    with _gomoku.GomokuEnv(chess_size, 'human') as env:
+    with _internal.GomokuEnv(chess_size, 'human') as env:
         runGame = True
         while True:
             env._render_gui('human')
 
             mx, my = pygame.mouse.get_pos()
-            i = (mx - _gomoku.env.LX)/_gomoku.env.UINT
-            j = (my - _gomoku.env.LY)/_gomoku.env.UINT
+            i = (mx - _internal.env.gomoku.LX)/_internal.env.gomoku.UINT
+            j = (my - _internal.env.gomoku.LY)/_internal.env.gomoku.UINT
             # 四舍五入
             i = round(i)
             j = round(j)
@@ -74,13 +74,13 @@ def play_with_human(chess_size: str):
             j = max(0, min(j, 5))
             pygame.draw.circle(env.window_surface,
                                (128, 0, 0),
-                               (_gomoku.env.LX+i*_gomoku.env.UINT, _gomoku.env.LY+j*_gomoku.env.UINT),
+                               (_internal.env.gomoku.LX+i*_internal.env.gomoku.UINT, _internal.env.gomoku.LY+j*_internal.env.gomoku.UINT),
                                5)
 
             for event in pygame.event.get():  # 从Pygame的事件队列中取出事件，并从队列中删除该事件
                 match event.type:
                     case pygame.MOUSEBUTTONDOWN:
-                        done = env.step(_gomoku.env.Action(i, j, player), False)
+                        done = env.step(_internal.env.gomoku.Action(i, j, player), False)
                         if not done:
                             continue  # 不能覆盖已有的棋子
 
@@ -124,18 +124,20 @@ def cpm(r: float, coverage: float):
 @main.command(help='测试GUI的渲染效果')
 @click.option('-c', '--coverage', default='75%', type=str, help='棋盘覆盖率，默认是：75%')
 @click.option('-p', '--save-path', default=None, help='图片存放到`path`而不直接展示，若为None则只展示而不储存')
-def show_frame_img(coverage: str, save_path: str):
-    size = (19, 19)
+@click.option('-s', '--chess-size', default='[6, 6]', type=tuple, help="棋盘尺寸，默认是：'[6, 6]'")
+def show_frame_img(coverage: str, save_path: str, chess_size:str):
+    chess_size = ''.join(iter(chess_size))
+    size = eval(chess_size)
 
     coverage = float(coverage[:-1])/100
     coverage /= 2  # 防止 1.0 取小数获得的百分比是 0.0
     coverage -= int(coverage)  # 只保留小数部分
 
-    with _gomoku.GomokuEnv(size, render_mode='rgb_array') as env:
+    with _internal.GomokuEnv(size, render_mode='rgb_array') as env:
         for i in range(size[0]):
             for j in range(size[1]):
                 r = random.random()
-                env.step(_gomoku.utils.Action(i, j, cpm(r, coverage)))
+                env.step(_internal.utils.Action(i, j, cpm(r, coverage)))
         arr = env.render()
         img = Image.fromarray(arr)
 
@@ -152,18 +154,18 @@ def draw_Network_IO(save_folder: str):
     size = (10, 10)
     folder = Path(save_folder)
 
-    with _gomoku.GomokuEnv(size, render_mode='rgb_array') as env0:
+    with _internal.GomokuEnv(size, render_mode='rgb_array') as env0:
         for i in range(size[0]):
             for j in range(size[1]):
                 r = random.random()
-                env0.step(_gomoku.utils.Action(i, j, cpm(r, 0.2)), False)
-        env0.step(_gomoku.utils.Action(5, 5, 1), False)
+                env0.step(_internal.utils.Action(i, j, cpm(r, 0.2)), False)
+        env0.step(_internal.utils.Action(5, 5, 1), False)
 
     img0 = Image.fromarray(env0.render())
     img0.save(folder / '0.png')
 
-    with (_gomoku.GomokuEnv(size, render_mode='rgb_array') as env1,
-          _gomoku.GomokuEnv(size, render_mode='rgb_array') as env2):
+    with (_internal.GomokuEnv(size, render_mode='rgb_array') as env1,
+          _internal.GomokuEnv(size, render_mode='rgb_array') as env2):
         env1.chessboard[env0.chessboard == 1] = 1
         env2.chessboard[env0.chessboard == 2] = 2
 
