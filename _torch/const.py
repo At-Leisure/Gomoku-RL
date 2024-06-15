@@ -1,6 +1,6 @@
 import torch
 
-from .basic import (Bool, UInt8, UInt16, UInt32, UInt64,
+from .review import (Bool, UInt8, UInt16, UInt32, UInt64,
                     Int, Int8, Int16, Int32, Int64,
                     Float, Float16, Float32, Float64, Double,
                     #
