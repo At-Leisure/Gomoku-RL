@@ -1,10 +1,9 @@
 from PIL import Image
 import random
-import click
 from pathlib import Path
-from typing import Callable, Any
+from typing import Callable
 
-import _internal.cmd_gui as cg
+import _internal.gui.group as cg
 
 
 def link_CLI_options(*, func: Callable, options: list[Callable] = None, group_cmd: Callable = None):
@@ -190,12 +189,12 @@ class CLI0:
 # ----------------------------------------------- GUI ----------------------------------------------- #
 
 
-class 测试(cg.CmdBase):
+class 测试(cg.CommandBaseClass):
 
     @staticmethod
-    def 测试GUI可用(参数1: cg.UIntEditer = 0, 参数2: cg.IntEditer = 0,
-                参数3: cg.TextEditer = '', 参数4: cg.FloatEditer = 0.,
-                参数5: cg.PathEditer = ''):
+    def 测试GUI可用(参数1: cg.UIntEditor = 0, 参数2: cg.IntEditor = 0,
+                参数3: cg.TextEditor = '', 参数4: cg.FloatEditor = 0.,
+                参数5: cg.FileSaver = ''):
         """ GUI 测试
         ### Parameters
         - `参数1` 自然数
@@ -207,9 +206,9 @@ class 测试(cg.CmdBase):
         print(参数1, 参数2, 参数3, 参数4, 参数5)
 
     @staticmethod
-    def 展示渲染帧的效果(覆盖率: cg.TextEditer = '75%',
-                 保存路径: cg.PathEditer = '',
-                 棋盘尺寸: cg.TextEditer = '[10, 10]'):
+    def 展示渲染帧的效果(覆盖率: cg.TextEditor = '75%',
+                 保存路径: cg.FileSaver = '',
+                 棋盘尺寸: cg.TextEditor = '[10, 10]'):
         """ ### 参数
         - `覆盖率` 棋盘覆盖率，默认是：75%
         - `保存路径` 图片存放到`path`而不直接展示，若为None则只展示而不储存
@@ -218,12 +217,12 @@ class 测试(cg.CmdBase):
         CLI0.show_frame_img(覆盖率, 保存路径, 棋盘尺寸)
         
     @staticmethod
-    def 绘制网络的数据流(保存目录: cg.PathEditer = './temp/netio'):
+    def 绘制网络的数据流(保存目录: cg.FileSaver = './temp/netio'):
         """ ### 参数
         - `保存目录` 生成的图片组保存的目录
         """
         CLI0.draw_Network_IO(保存目录)
 
 
-class 训练(cg.CmdBase):
+class 训练(cg.CommandBaseClass):
     ...
