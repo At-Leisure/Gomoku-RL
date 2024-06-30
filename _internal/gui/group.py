@@ -210,6 +210,7 @@ class 测试(CommandBaseClass):
             参数5: BoolEditor = False,  # type: ignore
             参数6: FileSaver = '',  # type: ignore
             参数7: FileGetter = '',  # type: ignore
+            参数8: ComboEditor = ['ABC', 'BBD', 'CED'],
             /):
         """ 
         ### 尼采经典语录
@@ -223,10 +224,10 @@ class 测试(CommandBaseClass):
         1. 你今天是一个孤独的怪人，你离群索居，总有一天你会成为一个民族!
         1. 那些没有消灭你的东西，会使你变得更强壮
         """
-        print([参数1, 参数2, 参数3, 参数4, 参数5, 参数6, 参数7])
+        print([参数1, 参数2, 参数3, 参数4, 参数5, 参数6, 参数7, 参数8])
 
     @staticmethod
-    def 选择(选择: FileGetter = '', 保存: FileSaver = ''):  # type: ignore
+    def 选择(选择: FileGetter = '', 保存: FileSaver = '', 超文本器: SelctorBase = ''):  # type: ignore
         """
         ### 尼采经典语录
         1. 要填饱肚子，是人不能那么容易的把自己看作上帝的原因。
@@ -240,7 +241,7 @@ class 测试(CommandBaseClass):
         1. 婚姻不幸福，不是因为缺乏爱，而是因为缺乏友谊。
         1. 对自己的害怕成了哲学的灵魂。
         """
-        print([选择, 保存])
+        print([选择, 保存, 超文本器])
 
 
 if __name__ == '__main__':
