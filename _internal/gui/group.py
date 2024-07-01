@@ -55,6 +55,13 @@ class FuncFrame(QFrame):
         button.setText('执行')
         button.clicked.connect(self._run)
         layout.addWidget(button)
+
+        self.locK_state = False
+        self.lock_button = QPushButton(self)
+        self.lock_button.setText('解锁/锁定')
+        self.lock_button.clicked.connect(self.change_lock_state)
+        layout.addWidget(self.lock_button)
+
         label = QTextBrowser()
         # label.setText(info['doc'])
         label.setMarkdown(info['doc'])  # type: ignore
@@ -69,9 +76,20 @@ class FuncFrame(QFrame):
         layout.addWidget(self.param_box)
         param_frame.setLayout(layout)
 
+        self.change_lock_state()
+
     def _run(self):
-        params = [w.current_param for w in self.param_box.params_widgets]
+        params = [w.current_param for w in self.param_box.params_widgets if not w is SeparateLine]
         self.info['func'](*params)  # type: ignore
+
+    def change_lock_state(self):
+        self.locK_state = not self.locK_state
+        if self.locK_state:
+            self.param_box.setEnabled(False)
+            # self.lock_button.setText('锁定参数')
+        else:
+            self.param_box.setEnabled(True)
+            # self.lock_button.setText('解锁参数')
 
 
 class Group:
@@ -205,6 +223,7 @@ class 测试(CommandBaseClass):
     @staticmethod
     def 打印(参数1: UIntEditor = 0,  # type: ignore
             参数2: IntEditor = 0,  # type: ignore
+            ____: SeparateLine = '┈┄'*20,
             参数3: TextEditor = '',  # type: ignore
             参数4: FloatEditor = 0.,  # type: ignore
             参数5: BoolEditor = False,  # type: ignore

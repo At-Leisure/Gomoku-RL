@@ -195,3 +195,14 @@ class ComboEditor(SelctorBase):
 
         else:
             warnings.warn('错误的类型')
+
+
+class SeparateLine(QLabel, EditorABC):
+
+    @property
+    def current_param(self):
+        return SeparateLine
+
+    @current_param.setter
+    def current_param(self, v):
+        self.setText(v)

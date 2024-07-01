@@ -3,6 +3,7 @@ import sys
 import click
 import main_group as mg
 import _internal.gui.group as cg
+import _other.cmd as oc
 
 
 @click.group(help='五子棋命令行')
@@ -59,6 +60,7 @@ mg.link_CLI_options(
 
 def graphic_control():
     c = cg.Group()
+    c.register(oc.综合v0)
     c.register(cg.测试)
     c.register(mg.训练)
     c.register(mg.测试)
