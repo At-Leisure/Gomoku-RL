@@ -1,25 +1,42 @@
 """ 策略 MCTS (Monte Carlo Tree Search) 蒙特卡洛树搜索 """
 
 from typing import overload, Generic, TypeVar, Any, Callable
-from functools import cached_property
+from functools import cached_property, partial
 import numpy as np
+import dataclasses
+import math
+from copy import deepcopy
 
-from . import env as _env
-from . import policy as _policy
-from . import utils as _utils
+import gym
+
+from ..utils.abc import MCTSABC, PlayerABC, EnvABC
+from ..utils.typing import Tree, Node
+from .kernel import GameKernel
 
 
-class NodeData:
+@dataclasses.dataclass
+class Action:
+    x: int = None
+    y: int = None
+    faction: int = None
 
-    def __init__(self, prior_prob) -> None:
-        self.win_times = 0  # 模拟获胜次数
-        self.sim_times = 0  # 当前结点的总模拟次数
-        self.parent_times = 0  # 父结点的总模拟次数
-        self.action = _utils.Action()
-        self._u = 0
-        self._P = prior_prob
 
-    @cached_property
+@dataclasses.dataclass
+class DataBase:
+    action: Action
+    win_times: int = 0  # 模拟获胜次数
+    sim_times: int = 0  # 当前结点的总模拟次数
+    parent_times: int = 0  # 父结点的总模拟次数
+    _u: int = 0
+    _P: bool = None  # 先验概率
+    is_backwarded: bool = False  # 一个节点只后向传播一次
+
+
+class NodeData(DataBase):
+
+    def __init__(self, action: Action, prior_prob: float = None) -> None:
+        super().__init__(action=action, _P=prior_prob)
+
     def value(self, c: float):
         """计算并返回该节点的值。
         它是叶子值Q和这个节点的先验的组合
@@ -27,77 +44,121 @@ class NodeData:
         C: (0, inf)中的一个数字，控制的相对影响
         值Q和先验概率P。
         """
-        a = self.win_times / self.sim_times
-        b = c * self._P * np.sqrt(np.log(self.parent_times)/self.sim_times)
-        return a+b
+        if self.sim_times != 0:
+            a = self.win_times / self.sim_times
+            b = c * self._P * np.sqrt(np.log(self.parent_times)/self.sim_times)
+            return a+b
+        else:
+            return math.inf
 
 
-NodeType = _utils.Node[NodeData]
+NodeType = Node[NodeData]
+TreeType = Tree[NodeType]
 
 
-class MCTSTree(_utils.Tree[NodeType]):
+class MCTSTree(Tree[NodeType]):
 
     def select(self, from_: NodeType, c: int):
-        """ 在子节点中选择动作值Q最大的动作加上u(P)
-        返回:(action, next_node)的元组"""
+        """ """
         node = max(self.children(from_.identifier),
                    key=lambda n: n.data.value)
         return node.data.action, node
 
 
-class MCTS:
+class MCTSBase(MCTSABC):
 
-    def __init__(self,
-                 policy_value_fn: Callable[[np.ndarray], tuple[np.ndarray, float]],
-                 c_puct: int = 5) -> None:
+    @property
+    def root(self):
+        return self._tree.get_node(self._tree.root)
+
+    def __init__(self, c_weight: float = 2.0) -> None:
         """ 
         `policy_value_fn` 策略价值函数
         `c_puct`（0， inf） 中的一个数字，用于控制探索收敛到最大值策略的速度。更高的值意味着依赖先前的更多"""
-        self._tree = MCTSTree(node_class=NodeType)
-        self._tree.add_node(NodeType(data=NodeData(1.0)))  # add root node
-        self.policy_value_fn = policy_value_fn
-        self._c_puct = c_puct
+        self._tree = TreeType()
+        root = NodeType(data=NodeData(Action(), 1.0))
+        self._tree.add_node(root)  # add root node
+        self._c = c_weight
 
-    def diffuse(self, state: _env.GomokuEnv):
-        """ 从根到叶运行一次扩散，获取值这片叶子通过它的亲本繁殖回来。状态是就地修改的，因此必须提供副本。 """
-        node = self._tree.root
-        tree = self._tree
-        while not node.is_leaf(self._tree.identifier):
-            # 贪婪地选择下一步
-            action, node = tree.select(node, self._c_puct)
-            state.step(action)
+    def FN_policy_value(self, state: np.ndarray):
+        """ 策略价值函数(平均性)，用于给出每个位置的策略价值。一个接受状态并输出(动作，概率)元组列表和状态分数的函数 
 
-        action_probs, leaf_value = self.policy_value_fn(state)
+        为了行动的有效性，使在 state 不为 0 的位置的概率为 0，其他位置的概率均匀分配，所有概率之和为 1"""
+        action_probs = np.ones(state.shape) / np.sum(state != 0)
+        action_probs[state != 0] = 0
+        return action_probs
 
+    def FN_rollout_policy(self, state: np.ndarray):
+        """ 推出策略函数(随机性)。在推出阶段使用的policy_fn的粗略、快速版本。 
 
-class MCTSPlayer(_utils.PlayerABC):
+        为了行动的有效性，使在 state 不为 0 的位置的概率为 0，其他位置的概率随机分配"""
+        action_probs = np.random.random(state.shape)
+        action_probs[state != 0] = 0
+        return action_probs
 
-    def get_action(self, env, return_prob=0):
-        sensible_moves = env.availables
-        # the pi vector returned by MCTS as in the alphaGo Zero paper
-        move_probs = np.zeros(board_width * board_width)
-        if len(sensible_moves) > 0:
-            acts, probs = self.mcts.get_move_probs(env, temperature)
-            move_probs[list(acts)] = probs
-            if self._is_selfplay:
-                # add Dirichlet Noise for exploration (needed for
-                # self-play training)
-                move = np.random.choice(
-                    acts,
-                    p=noise_eps * probs + (1 - noise_eps) * np.random.dirichlet(
-                        dirichlet_alpha * np.ones(len(probs))))
-                # update the root node and reuse the search tree
-                self.mcts.update_with_move(move)
-            else:
-                # with the default temp=1e-3, it is almost equivalent
-                # to choosing the move with the highest prob
-                move = np.random.choice(acts, p=probs)
-                # reset the root node
-                self.mcts.update_with_move(-1)
+    def S1_select(self, node: NodeType = None):
+        if node is None:
+            node = self.root
+        if node.is_leaf(self._tree.identifier):
+            print('不能对叶子节点进行`选择`')
+            return node
 
-            if return_prob:
-                return move, move_probs
-            else:
-                return move
+        def key(n: NodeType):
+            return n.data.value(self._c)
+        child = max(self._tree.children(node.identifier), key=key)
+        return child  # 返回子节点
+
+    def S2_expand(self, node: NodeType, state: np.ndarray):
+        # 扩展叶子节点，默认
+        children_action = [n.data.action for n in self._tree.children(node.identifier)]
+        if state.ndim == 2:
+            a, b = np.where(state == 0)
+            for x, y in zip(a, b):
+                act = Action(x, y, None)  # TODO 更改faction
+                if not act in children_action:
+                    self._tree.add_node(NodeType(data=NodeData(act, 1.0)), node)
         else:
-            print("WARNING: the board is full")
+            raise NotImplementedError()
+
+    def S3_simulate(self, node: NodeType, env: EnvABC, max_iter=1000):
+        """ step3 模拟:  使用推出策略玩到游戏结束 TODO 验证S3的有效性
+
+        如果当前玩家获胜则返回+1，如果对手获胜则返回-1，如果超过最大迭代次数视为平局，平局时返回0"""
+        env = env.copy()  # 需要使用副本进行模拟
+        player = env.current_agent
+        for i in range(max_iter):
+            is_end, winner = env.is_won()
+            if is_end:
+                break
+            action_probs = self.FN_rollout_policy(env.chessboard)
+            # 将一维索引转换为二维索引
+            x, y = np.unravel_index(action_probs.argmax(), action_probs.shape)
+            env.step(Action(x, y, 1 if env.current_agent == 1 else 2),
+                     next_agent=2 if env.current_agent == 1 else 1)  # TODO 更改faction,agent
+        else:
+            # If no break from the loop, issue a warning.
+            print("WARNING: rollout reached move limit")
+
+        node.data.sim_times += 1
+        if winner == player:
+            node.data.win_times += 1
+        if winner is None:  # tie
+            return 0
+        else:
+            return 1 if winner == player else -1
+
+    def S4_backward(self, node: NodeType):
+        if node.data.is_backwarded:
+            print(f'Warning: node {node} is backwarded')
+        else:
+            node.data.is_backwarded = True
+
+        while not node.is_root(self._tree.identifier):
+            super_node = self._tree.parent(node.identifier)
+            super_node.data.win_times += node.data.win_times
+            super_node.data.sim_times += node.data.sim_times
+            node = super_node
+
+
+class MCTSPlayer(PlayerABC):
+    pass

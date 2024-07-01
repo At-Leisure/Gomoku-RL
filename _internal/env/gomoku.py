@@ -26,8 +26,9 @@ import gym.error
 from gym import logger, spaces
 from gym.utils import seeding
 
-from .. import utils as _utils
-from ..utils import Action
+from .action import Action
+from ..utils.contain import seque
+from ..utils.abc import PlayerABC, EnvABC
 
 
 __all__ = ['GomokuEnv']
@@ -56,7 +57,7 @@ COLORS = {
 }
 
 
-class GomokuEnv(gym.Env):
+class GomokuEnv(EnvABC):
     """ 棋盘 环境 
     五子棋的环境是按照标准gym环境构建的，棋盘宽x高，先在横线、直线或斜对角线上形成n子连线的玩家获胜。
 状态空间为[4,棋盘宽，棋盘高]，四个维度分别为当前视角下的位置，对手位置，上次位置以及轮次。"""
@@ -66,13 +67,14 @@ class GomokuEnv(gym.Env):
     """ 空棋的值 """
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
-        self.chessboard = np.zeros(self.board_size, dtype=np.uint8)
-        self.actions: _utils.Queue[Action] = _utils.Queue(1)
+        self.chessboard: np.ndarray | torch.Tensor = np.zeros(self.board_size, dtype=np.uint8)
+        self.actions: seque[Action] = seque(maxlen=1)
         return super().reset(seed=seed, options=options)
 
     def __init__(self,
                  board_size: tuple[int, int] = (6, 6),
-                 render_mode: RenderModesList = None,):
+                 render_mode: RenderModesList = None,
+                 reset=True):
         """ 
         ## Parameters
         - `board_size` 棋盘尺寸
@@ -83,7 +85,8 @@ class GomokuEnv(gym.Env):
         self.board_size = np.array(board_size)
         # self.action_space = spaces.Discrete(self.board_wid*self.board_hei)
         # self.observation_space = spaces.Box()
-        self.reset()
+        if reset:
+            self.reset()
 
         # 检测可视环境下pygame的安装
         if self.render_mode in ['human', 'rgb_array']:
@@ -118,17 +121,23 @@ class GomokuEnv(gym.Env):
     def board_hei(self): return self.board_size[1]
 
     @overload
-    def step(self, action: Action, forcely: bool) -> bool: pass
-    @overload
-    def step(self, action: Action) -> tuple[np.ndarray, int, bool]: pass
-
-    def step(self, action: Action, forcely=None):
+    def step(self, action: Action, forcely: bool) -> bool:
         """ 更新环境
 
         ## Parameters
         - `action` 行为对象
         - `forcely` 强制覆盖，不论是否已经有非空值存在。只在人类操纵时用到。
         """
+    @overload
+    def step(self, action: Action, next_agent: int = None) -> tuple[np.ndarray, int, bool]:
+        """ 更新环境
+
+        ## Parameters
+        - `action` 行为对象
+        - `next_agent` 下一个执棋者
+        """
+
+    def step(self, action: Action, forcely=None, next_agent=None):
 
         if isinstance(forcely, bool):
             if action.faction == self.CHESS_NULL:
@@ -143,10 +152,16 @@ class GomokuEnv(gym.Env):
             return True
 
         else:
+
+            if next_agent is None:
+                raise TypeError('执棋者不能是空')
+            else:
+                self.current_agent = next_agent
+
             self.chessboard[action.x, action.y] = action.faction
             self.actions.put_smartly(action)  # 使用Queue.put的话，在已满状态继续put就会卡住
 
-            terminated, winner = self.is_end()
+            terminated, winner = self.is_won()
             if terminated:
                 if winner == action.faction:  # 获胜
                     reward = 100
@@ -320,13 +335,11 @@ class GomokuEnv(gym.Env):
         arr[arr == point_value] = 1
         return arr
 
-    def is_end(self) -> tuple[bool, int | None]:
-        """ 返回游戏状态
-        >>> is_end,winner = self.is_end()"""
+    def is_won(self) -> tuple[bool, int | None]:
         hyper_board = np.zeros([8+self.board_wid, 8+self.board_hei], dtype=self.chessboard.dtype)
         hyper_board[4:4+self.board_wid, 4:4+self.board_hei] = self.chessboard
 
-        x, y, _ = self.last_action.package
+        x, y = self.last_action.x, self.last_action.y
         assert 0 <= x <= self.board_wid-1 and 0 <= y <= self.board_hei-1
         arr = self._getPointAround(x, y, hyper_board)
 
@@ -348,7 +361,7 @@ class GomokuEnv(gym.Env):
         else:  # 未结束
             return False, None
 
-    def start_self_play(self, player: _utils.PlayerABC):
+    def start_self_play(self, player: PlayerABC):
         """ 使用MCTS播放器启动自玩游戏，重复使用搜索树，并存储self-play数据:(state, McTs_probs, z)用于训练
         """
         self.reset()
@@ -371,3 +384,11 @@ class GomokuEnv(gym.Env):
                 # reset MCTS root node
                 player.reset_player()
                 return winner, zip(states, mcts_probs, winners_z)
+
+    def copy(self):
+        """ 返回副本 """
+        env = GomokuEnv(self.board_size, self.render_mode, False)
+        env.chessboard = self.chessboard.copy()
+        env.actions = self.actions.copy()
+        env.current_agent = self.current_agent
+        return env

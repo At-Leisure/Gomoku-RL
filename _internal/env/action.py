@@ -6,11 +6,14 @@ from dataclasses import dataclass
 from typing_extensions import Self
 import treelib
 
+from ..utils.typing import Faction
+
+
 @dataclass
 class ActionBase:
     x: int = -1
     y: int = -1
-    faction: int = -1
+    faction: Faction = Faction.NULL
     """ 所属派系 """
 
 

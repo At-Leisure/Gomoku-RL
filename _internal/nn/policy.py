@@ -18,7 +18,7 @@ from gym.spaces import Box, Discrete
 import matplotlib.pyplot as plt
 from IPython import display
 
-from . import utils as _utils
+from ..utils.abc import PlayerABC
 
 
 class ValueNetwork_other(nn.Module):
@@ -171,5 +171,5 @@ class Policymaker:
         return loss.item(), entropy.item()
 
 
-class NNPlayer(_utils.PlayerABC):
+class NNPlayer(PlayerABC):
     ...
