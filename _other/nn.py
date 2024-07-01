@@ -187,3 +187,120 @@ class NormalVGG(NetBase):
         p = self.policy(c)
         v = self.value(c)
         return p, v
+
+
+class NormalResNet(NetBase):
+    """policy-value network module"""
+
+    class BasicBlock(nn.Module):
+
+        def __init__(self, main_channel: nn.Module, shortcut: nn.Module = None) -> None:
+            super().__init__()
+            self.main_channel = main_channel
+            self.shortcut = shortcut
+
+        def forward(self, x):
+            iden = x if self.shortcut is None else self.shortcut(x)
+            out = self.main_channel(x)
+            return out + iden
+
+    def __init__(self, wid, hei):
+        super().__init__(wid, hei)
+
+        self.common = nn.Sequential(
+            nn.Conv2d(in_channels=4, out_channels=64, kernel_size=3, stride=1, padding=1),
+            self.BasicBlock(
+                nn.Sequential(
+                    nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1),
+                    nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)),
+                nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1)),
+            nn.ReLU(),
+            self.BasicBlock(
+                nn.Sequential(
+                    nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
+                    nn.Conv2d(in_channels=128, out_channels=128, kernel_size=3, stride=1, padding=1)),
+                nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1)),
+            nn.ReLU(),
+        )
+        self.policy = nn.Sequential(
+            nn.Conv2d(128, 4, kernel_size=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(4 * self.board_width * self.board_height, self.board_width * self.board_height),
+            nn.LogSoftmax(),
+        )
+        self.value = nn.Sequential(
+            nn.Conv2d(128, 2, kernel_size=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(2 * self.board_width * self.board_height, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        c = self.common(x)
+        p = self.policy(c)
+        v = self.value(c)
+        return p, v
+
+
+class NormalDenseNet(NetBase):
+    """policy-value network module"""
+    class Block(nn.Module):
+        def __init__(self, n_layers, n_channels) -> None:
+            super().__init__()
+            self.n_layers = n_layers
+            self.ms = nn.ModuleList([
+                nn.Conv2d(
+                    n_channels*i,
+                    n_channels,
+                    kernel_size=3, stride=1, padding=1)
+                for i in range(1, 1+n_layers)
+            ])
+
+        def forward(self, x):
+            input = x
+            output = None
+            for m in self.ms:
+                output = m(input)
+                input = torch.cat([output, input], dim=1)  # 按通道合并
+            return output
+
+    def __init__(self, wid, hei):
+        super().__init__(wid, hei)
+
+        self.common = nn.Sequential(
+            nn.Conv2d(in_channels=4, out_channels=32, kernel_size=3, stride=1, padding=1),
+            self.Block(3, 32),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1),
+            self.Block(3, 64),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1, padding=1),
+        )
+        self.policy = nn.Sequential(
+            nn.Conv2d(128, 4, kernel_size=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(4 * self.board_width * self.board_height, self.board_width * self.board_height),
+            nn.LogSoftmax(),
+        )
+        self.value = nn.Sequential(
+            nn.Conv2d(128, 2, kernel_size=1),
+            nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(2 * self.board_width * self.board_height, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Tanh(),
+        )
+
+    def forward(self, x):
+        # c = self.common(x);return c
+
+        c = self.common(x)
+        p = self.policy(c)
+        v = self.value(c)
+        return p, v

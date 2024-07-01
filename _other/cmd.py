@@ -12,7 +12,9 @@ class TrainCommand:
 
 nndic = {
     'CNN': _nn.NormalCNN,
-    'VGG': _nn.NormalVGG
+    'VGG': _nn.NormalVGG,
+    'ResNet': _nn.NormalResNet,
+    'DenseNet': _nn.NormalDenseNet
 }
 
 board_width = 6        # 棋盘宽
@@ -40,7 +42,7 @@ class 综合v0(CommandBaseClass):
 
     @staticmethod
     def 训练模型(棋盘尺寸: TextEditor = '[6, 6]',
-             网络名称: ComboEditor = ['CNN', 'VGG'],
+             网络名称: ComboEditor = ['CNN', 'VGG', 'ResNet', 'DenseNet'],
              模型文件: FileGetter = '',
              缓冲大小: UIntEditor = 5000,
              推理时间: UIntEditor = 200,
@@ -84,9 +86,9 @@ class 综合v0(CommandBaseClass):
         tpl.run()
 
     @staticmethod
-    def 测试模型param(被测网络: ComboEditor = ['CNN', 'VGG'],
+    def 测试模型param(被测网络: ComboEditor = ['CNN', 'VGG', 'ResNet', 'DenseNet'],
                   被测对象: FileGetter = '',
-                  标准网络: ComboEditor = ['CNN', 'VGG'],
+                  标准网络: ComboEditor = ['CNN', 'VGG', 'ResNet', 'DenseNet'],
                   测试标准: FileGetter = ''):
         """ 测试模型
         ### 参数
